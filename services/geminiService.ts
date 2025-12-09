@@ -1,8 +1,45 @@
 import { GoogleGenAI } from "@google/genai";
 import { ItemType, NewItemInput } from '../types';
 
-// FIX 1: Use the correct class name (GoogleGenAI) and correct initialization format
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
+
+// Helper to get image from TMDB
+async function fetchPosterFromTMDB(name: string, type: ItemType, year?: number): Promise<string | undefined> {
+  if (!TMDB_API_KEY) {
+    console.warn("TMDB API Key missing");
+    return undefined;
+  }
+
+  try {
+    // Determine strict search type for better accuracy
+    let endpoint = 'search/multi'; // Default fallback
+    if (type === ItemType.Movie) endpoint = 'search/movie';
+    if (type === ItemType.Series) endpoint = 'search/tv';
+    
+    // For Anime, we use 'multi' because it could be a movie or a show
+    // We add specific params to refine the search
+    const url = new URL(`${TMDB_BASE_URL}/${endpoint}`);
+    url.searchParams.append('api_key', TMDB_API_KEY);
+    url.searchParams.append('query', name);
+    if (year) url.searchParams.append('year', year.toString()); // For movies
+    if (year && type !== ItemType.Movie) url.searchParams.append('first_air_date_year', year.toString()); // For shows
+
+    const res = await fetch(url.toString());
+    const data = await res.json();
+
+    if (data.results && data.results.length > 0) {
+      // Return the first result's poster path
+      const path = data.results[0].poster_path;
+      return path ? `${TMDB_IMAGE_BASE}${path}` : undefined;
+    }
+  } catch (error) {
+    console.error("Error fetching from TMDB:", error);
+  }
+  return undefined;
+}
 
 export const fetchMediaDetails = async (input: NewItemInput): Promise<{
   genre: string;
@@ -17,6 +54,7 @@ export const fetchMediaDetails = async (input: NewItemInput): Promise<{
 }> => {
   const modelId = 'gemini-2.5-flash';
 
+  // We REMOVED the request for posterUrl from Gemini to avoid hallucinations
   const prompt = `
     Search for the ${input.type} named "${input.name}" on IMDb. 
     
@@ -26,9 +64,8 @@ export const fetchMediaDetails = async (input: NewItemInput): Promise<{
     3. Year of Release (number)
     4. ${input.type === ItemType.Anime ? 'Total Number of Seasons' : 'Rotten Tomatoes score (percentage string)'}
     5. A short, exciting description (one sentence).
-    6. The direct URL of the official poster image from IMDb (Internet Movie Database). The URL usually starts with "https://m.media-amazon.com/images" and ends with ".jpg". Do not provide the IMDb page URL (like /title/tt...), provide the actual image source URL.
-    7. The Run Period (string). For series/anime, format as "StartYear-EndYear" (e.g. "2020-2024" or "2022-Present"). For movies, just the year (e.g. "2023").
-    8. Where to watch: List up to 3 major streaming platforms (Netflix, Prime Video, Disney+, Hulu, Crunchyroll, etc.) where this title is available, along with a direct link if possible. If a direct link isn't found, use the homepage of the platform.
+    6. The Run Period (string). For series/anime, format as "StartYear-EndYear" (e.g. "2020-2024" or "2022-Present"). For movies, just the year (e.g. "2023").
+    7. Where to watch: List up to 3 major streaming platforms (Netflix, Prime Video, Disney+, Hulu, Crunchyroll, etc.) where this title is available, along with a direct link if possible. If a direct link isn't found, use the homepage of the platform.
 
     Return the result strictly as a valid JSON object with the following keys:
     {
@@ -38,7 +75,6 @@ export const fetchMediaDetails = async (input: NewItemInput): Promise<{
       "rottenTomatoes": "string" (or "N/A"),
       "totalSeasons": number (or null),
       "description": "string",
-      "posterUrl": "string" (or null if not found),
       "runPeriod": "string",
       "streamingOptions": [
         { "platform": "string", "url": "string" }
@@ -49,30 +85,28 @@ export const fetchMediaDetails = async (input: NewItemInput): Promise<{
   `;
 
   try {
+    // 1. Fetch text data from Gemini
     const response = await ai.models.generateContent({
       model: modelId,
       contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }], // This syntax is correct for @google/genai
-      },
+      config: { tools: [{ googleSearch: {} }] },
     });
 
-    // FIX 2: Check for null response before accessing text
     if (!response || !response.text) throw new Error("No response from Gemini");
+    const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
     
-    const text = response.text;
-
-    // Clean up potential markdown formatting
-    const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-
     let data;
     try {
         data = JSON.parse(cleanText);
     } catch (e) {
-        console.error("Failed to parse JSON from Gemini response:", text);
-        throw new Error("Invalid data format received from AI.");
+        throw new Error("Invalid JSON from AI");
     }
 
+    // 2. Fetch reliable image from TMDB (running in parallel would be faster, but sequential is safer for now)
+    // We use the year from Gemini to make the TMDB search accurate
+    const tmdbPoster = await fetchPosterFromTMDB(input.name, input.type, data.year);
+
+    // 3. Combine and return
     return {
       genre: data.genre || "Unknown",
       imdbRating: Number(data.imdbRating) || 0,
@@ -80,13 +114,13 @@ export const fetchMediaDetails = async (input: NewItemInput): Promise<{
       rottenTomatoes: data.rottenTomatoes,
       totalSeasons: data.totalSeasons,
       description: data.description || `A ${input.type} named ${input.name}.`,
-      posterUrl: data.posterUrl || undefined,
+      posterUrl: tmdbPoster, // <--- Using the real image here
       runPeriod: data.runPeriod || String(data.year),
       streamingOptions: data.streamingOptions || []
     };
 
   } catch (error) {
-    console.error("Error fetching details from Gemini:", error);
+    console.error("Error fetching details:", error);
     throw error;
   }
 };
