@@ -1,126 +1,121 @@
-import { GoogleGenAI } from "@google/genai";
 import { ItemType, NewItemInput } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const OMDB_API_KEY = import.meta.env.VITE_OMDB_API_KEY;
+
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
-// Helper to get image from TMDB
-async function fetchPosterFromTMDB(name: string, type: ItemType, year?: number): Promise<string | undefined> {
-  if (!TMDB_API_KEY) {
-    console.warn("TMDB API Key missing");
-    return undefined;
-  }
+// ------------------------------------------------------------------
+// 1. Helper: Get Ratings from OMDb (The "Gold Standard" for ratings)
+// ------------------------------------------------------------------
+async function fetchRatings(imdbId: string): Promise<{ imdb: number, rt: string }> {
+  if (!OMDB_API_KEY || !imdbId) return { imdb: 0, rt: 'N/A' };
 
   try {
-    // Determine strict search type for better accuracy
-    let endpoint = 'search/multi'; // Default fallback
-    if (type === ItemType.Movie) endpoint = 'search/movie';
-    if (type === ItemType.Series) endpoint = 'search/tv';
-    
-    // For Anime, we use 'multi' because it could be a movie or a show
-    // We add specific params to refine the search
-    const url = new URL(`${TMDB_BASE_URL}/${endpoint}`);
-    url.searchParams.append('api_key', TMDB_API_KEY);
-    url.searchParams.append('query', name);
-    if (year) url.searchParams.append('year', year.toString()); // For movies
-    if (year && type !== ItemType.Movie) url.searchParams.append('first_air_date_year', year.toString()); // For shows
-
-    const res = await fetch(url.toString());
+    const res = await fetch(`https://www.omdbapi.com/?i=${imdbId}&apikey=${OMDB_API_KEY}`);
     const data = await res.json();
 
-    if (data.results && data.results.length > 0) {
-      // Return the first result's poster path
-      const path = data.results[0].poster_path;
-      return path ? `${TMDB_IMAGE_BASE}${path}` : undefined;
+    if (data.Response === "True") {
+      const imdb = parseFloat(data.imdbRating) || 0;
+      const rtSource = data.Ratings?.find((r: any) => r.Source === "Rotten Tomatoes");
+      return { imdb, rt: rtSource ? rtSource.Value : 'N/A' };
     }
   } catch (error) {
-    console.error("Error fetching from TMDB:", error);
+    console.error("OMDb Error:", error);
   }
-  return undefined;
+  return { imdb: 0, rt: 'N/A' };
 }
 
-export const fetchMediaDetails = async (input: NewItemInput): Promise<{
-  genre: string;
-  imdbRating: number;
-  year: number;
-  rottenTomatoes?: string;
-  totalSeasons?: number;
-  description: string;
-  posterUrl?: string;
-  runPeriod?: string;
-  streamingOptions?: { platform: string; url: string }[];
-}> => {
-  const modelId = 'gemini-2.5-flash';
-
-  // We REMOVED the request for posterUrl from Gemini to avoid hallucinations
-  const prompt = `
-    Search for the ${input.type} named "${input.name}" on IMDb. 
-    
-    I need you to find the following details:
-    1. Primary Genre (string) - e.g. "Action", "Thriller", "Sci-Fi", "Drama". Pick the most relevant single or dual genre.
-    2. IMDb rating (number)
-    3. Year of Release (number)
-    4. ${input.type === ItemType.Anime ? 'Total Number of Seasons' : 'Rotten Tomatoes score (percentage string)'}
-    5. A short, exciting description (one sentence).
-    6. The Run Period (string). For series/anime, format as "StartYear-EndYear" (e.g. "2020-2024" or "2022-Present"). For movies, just the year (e.g. "2023").
-    7. Where to watch: List up to 3 major streaming platforms (Netflix, Prime Video, Disney+, Hulu, Crunchyroll, etc.) where this title is available, along with a direct link if possible. If a direct link isn't found, use the homepage of the platform.
-
-    Return the result strictly as a valid JSON object with the following keys:
-    {
-      "genre": "string",
-      "imdbRating": number,
-      "year": number,
-      "rottenTomatoes": "string" (or "N/A"),
-      "totalSeasons": number (or null),
-      "description": "string",
-      "runPeriod": "string",
-      "streamingOptions": [
-        { "platform": "string", "url": "string" }
-      ]
-    }
-    
-    Do not wrap the JSON in markdown code blocks. Just return the raw JSON string.
-  `;
+// ------------------------------------------------------------------
+// 2. Main Service: Fetch everything from TMDB
+// ------------------------------------------------------------------
+export const fetchMediaDetails = async (input: NewItemInput) => {
+  if (!TMDB_API_KEY) throw new Error("TMDB API Key is missing!");
 
   try {
-    // 1. Fetch text data from Gemini
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
-    });
+    // A. SEARCH for the content
+    let searchEndpoint = 'search/multi';
+    if (input.type === ItemType.Movie) searchEndpoint = 'search/movie';
+    if (input.type === ItemType.Series || input.type === ItemType.Anime) searchEndpoint = 'search/tv';
 
-    if (!response || !response.text) throw new Error("No response from Gemini");
-    const cleanText = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+    const searchUrl = `${TMDB_BASE_URL}/${searchEndpoint}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(input.name)}`;
+    const searchRes = await fetch(searchUrl);
+    const searchData = await searchRes.json();
+
+    const bestMatch = searchData.results?.[0];
+    if (!bestMatch) throw new Error("No results found.");
+
+    // B. GET DETAILS (We need a second call to get specific IDs and Providers)
+    // We use "append_to_response" to get everything in one go:
+    // - external_ids: contains the IMDb ID
+    // - watch/providers: contains streaming links
+    const mediaType = input.type === ItemType.Movie ? 'movie' : 'tv';
+    const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${bestMatch.id}?api_key=${TMDB_API_KEY}&append_to_response=external_ids,watch/providers`;
     
-    let data;
-    try {
-        data = JSON.parse(cleanText);
-    } catch (e) {
-        throw new Error("Invalid JSON from AI");
+    const detailsRes = await fetch(detailsUrl);
+    const details = await detailsRes.json();
+
+    // C. EXTRACT DATA
+    const year = new Date(details.release_date || details.first_air_date || Date.now()).getFullYear();
+    const imdbId = details.external_ids?.imdb_id;
+    
+    // Get Ratings using the IMDb ID we just found
+    const ratings = await fetchRatings(imdbId);
+
+    // Format Streaming Providers (JustWatch data from TMDB)
+    // We look for 'US' or 'IN' (India) providers. Defaulting to IN since you mentioned local content.
+    const providers = details['watch/providers']?.results?.['IN'] || details['watch/providers']?.results?.['US'];
+    const flatProviders = providers?.flatrate || [];
+    
+    const streamingOptions = flatProviders.slice(0, 3).map((p: any) => ({
+      platform: p.provider_name,
+      // TMDB gives a generic "tmdb.org" link to the watch page, 
+      // so we construct a smart search link like we did before.
+      url: getSmartLink(p.provider_name, details.name || details.title) 
+    }));
+
+    // Construct Run Period
+    let runPeriod = String(year);
+    if (input.type !== ItemType.Movie && details.status !== "Ended" && details.status !== "Canceled") {
+      runPeriod = `${year}-Present`;
+    } else if (input.type !== ItemType.Movie && details.last_air_date) {
+      const endYear = new Date(details.last_air_date).getFullYear();
+      if (endYear !== year) runPeriod = `${year}-${endYear}`;
     }
 
-    // 2. Fetch reliable image from TMDB (running in parallel would be faster, but sequential is safer for now)
-    // We use the year from Gemini to make the TMDB search accurate
-    const tmdbPoster = await fetchPosterFromTMDB(input.name, input.type, data.year);
-
-    // 3. Combine and return
+    // Return the final object
     return {
-      genre: data.genre || "Unknown",
-      imdbRating: Number(data.imdbRating) || 0,
-      year: Number(data.year) || new Date().getFullYear(),
-      rottenTomatoes: data.rottenTomatoes,
-      totalSeasons: data.totalSeasons,
-      description: data.description || `A ${input.type} named ${input.name}.`,
-      posterUrl: tmdbPoster, // <--- Using the real image here
-      runPeriod: data.runPeriod || String(data.year),
-      streamingOptions: data.streamingOptions || []
+      id: String(bestMatch.id),
+      name: details.title || details.name, // Use official title
+      genre: details.genres?.[0]?.name || "Unknown",
+      imdbRating: ratings.imdb,
+      rottenTomatoes: ratings.rt,
+      year: year,
+      type: input.type,
+      totalSeasons: details.number_of_seasons || null,
+      description: details.overview || "No description available.",
+      posterUrl: details.poster_path ? `${TMDB_IMAGE_BASE}${details.poster_path}` : undefined,
+      runPeriod: runPeriod,
+      streamingOptions: streamingOptions
     };
 
   } catch (error) {
-    console.error("Error fetching details:", error);
+    console.error("Fetch Details Error:", error);
     throw error;
   }
 };
+
+// Helper to keep your "Smart Links" logic
+function getSmartLink(platform: string, title: string): string {
+  const p = platform.toLowerCase();
+  const t = encodeURIComponent(title);
+  if (p.includes('netflix')) return `https://www.netflix.com/search?q=${t}`;
+  if (p.includes('prime') || p.includes('amazon')) return `https://www.amazon.com/s?k=${t}&i=instant-video`;
+  if (p.includes('disney')) return `https://www.disneyplus.com/search?q=${t}`;
+  if (p.includes('hulu')) return `https://www.hulu.com/search?q=${t}`;
+  if (p.includes('hotstar')) return `https://www.hotstar.com/in/search?q=${t}`;
+  if (p.includes('jiocinema')) return `https://www.jiocinema.com/search?q=${t}`;
+  if (p.includes('sony')) return `https://www.sonyliv.com/search?q=${t}`;
+  return `https://www.google.com/search?q=watch+${t}+on+${platform}`;
+}

@@ -1,149 +1,134 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { MediaItem, ItemType, NewItemInput } from './types';
 import { MediaCard } from './components/MediaCard';
 import { AddModal } from './components/AddModal';
 import { DetailsModal } from './components/DetailsModal';
 import { fetchMediaDetails } from './services/geminiService';
 
-// Initial Data Population with example streaming links
-const INITIAL_DATA: MediaItem[] = [
-  // SERIES
-  { 
-    id: '1', name: 'From', genre: 'Horror', imdbRating: 7.8, rottenTomatoes: '96%', year: 2022, type: ItemType.Series, 
-    runPeriod: '2022-Present',
-    streamingOptions: [{ platform: 'MGM+', url: 'https://www.mgmplus.com/series/from' }, { platform: 'Prime Video', url: 'https://www.amazon.com/From-Season-1/dp/B09P8X57J9' }]
-  },
-  { 
-    id: '2', name: 'Dark', genre: 'Thriller', imdbRating: 8.7, rottenTomatoes: '95%', year: 2017, type: ItemType.Series, 
-    runPeriod: '2017-2020',
-    streamingOptions: [{ platform: 'Netflix', url: 'https://www.netflix.com/title/80100172' }]
-  },
-  { 
-    id: '3', name: 'Panchayat', genre: 'Drama Comedy', imdbRating: 9.0, rottenTomatoes: 'N/A', year: 2020, type: ItemType.Series, 
-    runPeriod: '2020-Present',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.primevideo.com/detail/Panchayat/0L6X1K8X1K8X1K8X1K8X1K' }]
-  },
-  { 
-    id: '4', name: 'Pluribus', genre: 'Drama', imdbRating: 8.4, rottenTomatoes: '98%', year: 2025, type: ItemType.Series,
-    runPeriod: '2025',
-    streamingOptions: []
-  },
-  { 
-    id: '5', name: 'Stranger Things', genre: 'Horror', imdbRating: 8.6, rottenTomatoes: '90%', year: 2016, type: ItemType.Series, 
-    runPeriod: '2016-2025',
-    streamingOptions: [{ platform: 'Netflix', url: 'https://www.netflix.com/title/80057281' }]
-  },
-  { 
-    id: '6', name: 'The Boys', genre: 'Drama', imdbRating: 8.6, rottenTomatoes: '93%', year: 2019, type: ItemType.Series, 
-    runPeriod: '2019-Present',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.amazon.com/The-Boys-Season-1/dp/B07QNJCGTK' }]
-  },
-  { 
-    id: '7', name: 'Family Man', genre: 'Thriller', imdbRating: 8.7, rottenTomatoes: '100%', year: 2019, type: ItemType.Series, 
-    runPeriod: '2019-Present',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.primevideo.com/detail/The-Family-Man/0H3D9D5D5D5D5D5D5D5D5D' }]
-  },
-  { 
-    id: '8', name: 'Fallout', genre: 'Drama', imdbRating: 8.3, rottenTomatoes: '93%', year: 2024, type: ItemType.Series, 
-    runPeriod: '2024-Present',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.amazon.com/Fallout-Season-1/dp/B0CN4H4H4H' }]
-  },
-  { 
-    id: '9', name: 'Paatal Lok', genre: 'Thriller', imdbRating: 8.2, rottenTomatoes: '100%', year: 2020, type: ItemType.Series, 
-    runPeriod: '2020',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.primevideo.com' }]
-  },
-  { 
-    id: '10', name: 'Reacher', genre: 'Action', imdbRating: 8.0, rottenTomatoes: '96%', year: 2022, type: ItemType.Series, 
-    runPeriod: '2022-Present',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.amazon.com/Reacher-Season-1/dp/B09H2K2K2K' }]
-  },
-  { 
-    id: '11', name: 'Delhi Crime', genre: 'Drama', imdbRating: 8.5, rottenTomatoes: '83%', year: 2019, type: ItemType.Series, 
-    runPeriod: '2019-Present',
-    streamingOptions: [{ platform: 'Netflix', url: 'https://www.netflix.com' }]
-  },
-  { 
-    id: '12', name: 'Money Heist', genre: 'Thriller', imdbRating: 8.2, rottenTomatoes: '94%', year: 2017, type: ItemType.Series, 
-    runPeriod: '2017-2021',
-    streamingOptions: [{ platform: 'Netflix', url: 'https://www.netflix.com' }]
-  },
-  { 
-    id: '13', name: 'Squid Game', genre: 'Thriller', imdbRating: 8.0, rottenTomatoes: '85%', year: 2021, type: ItemType.Series, 
-    runPeriod: '2021-Present',
-    streamingOptions: [{ platform: 'Netflix', url: 'https://www.netflix.com' }]
-  },
-  // MOVIES
-  { 
-    id: '14', name: 'Shutter Island', genre: 'Thriller/Mystery', imdbRating: 8.2, rottenTomatoes: '69%', year: 2010, type: ItemType.Movie, 
-    runPeriod: '2010',
-    streamingOptions: [{ platform: 'Prime Video', url: 'https://www.amazon.com/Shutter-Island-Leonardo-DiCaprio/dp/B003L7DHO0' }]
-  },
-  // ANIME
-  { 
-    id: '15', name: 'One Piece', genre: 'Adventure', imdbRating: 9.0, totalSeasons: 20, year: 1999, type: ItemType.Anime, 
-    runPeriod: '1999-Present',
-    streamingOptions: [{ platform: 'Crunchyroll', url: 'https://www.crunchyroll.com/series/GRMG8ZQZR/one-piece' }, { platform: 'Netflix', url: 'https://www.netflix.com' }]
-  },
-];
+// --- FIREBASE IMPORTS ---
+import { db, auth, googleProvider } from './firebaseConfig'; // Added auth
+import { collection, addDoc, deleteDoc, doc, onSnapshot, query } from 'firebase/firestore';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth'; // Auth functions
+
+// --- SECURITY CONFIG ---
+const ADMIN_EMAIL = "srkplayer47@gmail.com"; // <--- CHANGE THIS TO YOUR GMAIL !!
 
 function App() {
-  const [items, setItems] = useState<MediaItem[]>(INITIAL_DATA);
+  const [items, setItems] = useState<MediaItem[]>([]); 
+  const [isAppLoading, setIsAppLoading] = useState(true);
+  
+  // Auth State
+  const [user, setUser] = useState<User | null>(null);
+
+  // UI State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [activeTab, setActiveTab] = useState<ItemType>(ItemType.Series);
+  const [selectedGenre, setSelectedGenre] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Sorting logic: Sort by IMDb rating descending
-  const sortedItems = useMemo(() => {
-    return items
-      .filter(item => item.type === activeTab)
-      .sort((a, b) => b.imdbRating - a.imdbRating);
-  }, [items, activeTab]);
+  // --- 1. LISTEN TO AUTH CHANGES ---
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  const handleAddItem = async (input: NewItemInput) => {
-    setIsLoading(true);
+  // --- 2. LISTEN TO DATABASE ---
+  useEffect(() => {
+    const q = query(collection(db, "media-items"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const dbItems = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as MediaItem[];
+      setItems(dbItems);
+      setIsAppLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    setSelectedGenre('All');
+  }, [activeTab]);
+
+  // --- AUTH ACTIONS ---
+  const handleLogin = async () => {
     try {
-      const details = await fetchMediaDetails(input);
-      
-      const newItem: MediaItem = {
-        id: Date.now().toString(),
-        name: input.name,
-        genre: details.genre, // Use genre from AI response
-        type: input.type,
-        imdbRating: details.imdbRating,
-        year: details.year,
-        description: details.description,
-        posterUrl: details.posterUrl,
-        runPeriod: details.runPeriod,
-        streamingOptions: details.streamingOptions,
-        ...(input.type === ItemType.Anime 
-          ? { totalSeasons: details.totalSeasons || 1 } 
-          : { rottenTomatoes: details.rottenTomatoes || 'N/A' })
-      } as MediaItem;
-
-      setItems(prev => [...prev, newItem]);
-      setIsModalOpen(false);
+      await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      console.error("Failed to add item", error);
-      alert("Failed to fetch details. Please check your API key or try again.");
-    } finally {
-      setIsLoading(false);
+      console.error("Login failed", error);
     }
   };
 
-  const handleDeleteItem = (id: string) => {
-    const password = prompt("Enter password to delete this item:");
-    if (password === "Ballia726") {
-      setItems(prev => prev.filter(item => item.id !== id));
-      // Close modal if deleted item was selected
-      if (selectedItem?.id === id) {
-        setSelectedItem(null);
+  const handleLogout = async () => {
+    await signOut(auth);
+  };
+
+  // --- DERIVED DATA ---
+  const availableGenres = useMemo(() => {
+    const tabItems = items.filter(item => item.type === activeTab);
+    const genres = new Set<string>();
+    tabItems.forEach(item => genres.add(item.genre));
+    return Array.from(genres).sort();
+  }, [items, activeTab]);
+
+  const displayedItems = useMemo(() => {
+    return items
+      .filter(item => item.type === activeTab)
+      .filter(item => selectedGenre === 'All' || item.genre === selectedGenre)
+      .filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => b.imdbRating - a.imdbRating);
+  }, [items, activeTab, selectedGenre, searchQuery]);
+
+  const handleAddItem = async (input: NewItemInput) => {
+    const normalizedInput = input.name.trim().toLowerCase();
+    const duplicate = items.find(item => item.name.toLowerCase() === normalizedInput && item.type === input.type);
+    if (duplicate) { alert(`"${duplicate.name}" is already listed!`); return; }
+
+    setIsAdding(true);
+    try {
+      const details = await fetchMediaDetails(input);
+      const officialDuplicate = items.find(item => item.name.toLowerCase() === details.name.toLowerCase() && item.type === input.type);
+      if (officialDuplicate) { alert(`"${details.name}" is already listed!`); setIsAdding(false); return; }
+      
+      const newItem = {
+        name: details.name,
+        genre: details.genre,
+        type: input.type,
+        imdbRating: details.imdbRating,
+        rottenTomatoes: details.rottenTomatoes || 'N/A',
+        year: details.year,
+        description: details.description,
+        posterUrl: details.posterUrl || "",
+        runPeriod: details.runPeriod,
+        streamingOptions: details.streamingOptions,
+        totalSeasons: details.totalSeasons || null,
+        createdAt: Date.now()
+      };
+      await addDoc(collection(db, "media-items"), newItem);
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error("Failed to add item", error);
+      alert("Failed to add item.");
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    // SECURITY CHECK: Only allow if email matches ADMIN_EMAIL
+    if (!user || user.email !== ADMIN_EMAIL) {
+      alert("Only the admin can delete items.");
+      return;
+    }
+
+    if (confirm("Are you sure you want to delete this item?")) {
+      try {
+        await deleteDoc(doc(db, "media-items", id));
+        if (selectedItem?.id === id) setSelectedItem(null);
+      } catch (error) {
+        alert("Failed to delete item.");
       }
-    } else if (password !== null) {
-      // If user pressed Cancel (null), do nothing. If they entered wrong password, alert.
-      alert("Incorrect password. Access denied.");
     }
   };
 
@@ -157,32 +142,54 @@ function App() {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-blue-500 flex items-center justify-center">
                 <span className="text-white font-bold text-lg">C</span>
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">
+              <h1 className="text-2xl font-bold tracking-tight text-white hidden md:block">
                 CineRank<span className="text-purple-500">.ai</span>
               </h1>
             </div>
 
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-white text-black hover:bg-zinc-200 font-semibold py-2 px-6 rounded-full transition-colors flex items-center gap-2 text-sm shadow-[0_0_15px_rgba(255,255,255,0.2)]"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                <path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
-              </svg>
-              Add New
-            </button>
+            {/* HEADER CONTROLS: Add New + Login */}
+            <div className="flex items-center gap-4">
+               <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="bg-white text-black hover:bg-zinc-200 font-semibold py-2 px-4 md:px-6 rounded-full transition-colors flex items-center gap-2 text-sm shadow-[0_0_15px_rgba(255,255,255,0.2)]"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                    <path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
+                  </svg>
+                  <span className="hidden md:inline">Add New</span>
+                </button>
+
+                {/* LOGIN / LOGOUT BUTTON */}
+                {user ? (
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={user.photoURL || ""} 
+                      alt="User" 
+                      className="w-8 h-8 rounded-full border border-zinc-700"
+                      title={`Logged in as ${user.email}`}
+                    />
+                    <button onClick={handleLogout} className="text-xs text-zinc-400 hover:text-white underline">
+                      Log Out
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={handleLogin}
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition-colors"
+                  >
+                    Admin Login
+                  </button>
+                )}
+            </div>
           </div>
 
-          {/* Navigation Tabs */}
           <div className="flex space-x-8 mt-2 overflow-x-auto no-scrollbar">
             {Object.values(ItemType).map((type) => (
               <button
                 key={type}
                 onClick={() => setActiveTab(type)}
                 className={`pb-4 text-sm font-medium tracking-wide transition-all border-b-2 whitespace-nowrap px-2 ${
-                  activeTab === type
-                    ? 'border-purple-500 text-white'
-                    : 'border-transparent text-zinc-500 hover:text-zinc-300'
+                  activeTab === type ? 'border-purple-500 text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'
                 }`}
               >
                 TOP {type.toUpperCase()}S
@@ -192,7 +199,6 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         {/* Intro Section */}
@@ -206,64 +212,100 @@ function App() {
             <p className="text-zinc-400 leading-7 max-w-4xl text-sm md:text-base font-light">
               There are too many series, shows, and anime releasing every month. Even if you search "top series" on Google, you may miss some 
               <span className="text-zinc-200 font-medium"> golden gems </span> 
-              just because they are not widely discussed. Here the solution comes: pick your choice among audience-curated favorites, arranged effectively. 
-              <span className="text-purple-400 font-medium block mt-1"> No more time wasted searching for a good show.</span>
+              just because they are not widely discussed.
             </p>
           </div>
         </div>
 
-        <div className="flex items-end justify-between mb-8">
-            <h2 className="text-3xl font-bold text-white">
-               Top Rated {activeTab}s
-            </h2>
-            <span className="text-zinc-500 text-sm font-mono hidden md:inline-block">
-                Sorted by IMDb Rating
-            </span>
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+            <div>
+                <h2 className="text-3xl font-bold text-white">Top Rated {activeTab}s</h2>
+                <span className="text-zinc-500 text-sm font-mono mt-1 block">Sorted by IMDb Rating</span>
+            </div>
+
+            {/* SEARCH & FILTERS */}
+            <div className="flex flex-col gap-3 items-end">
+              <div className="relative w-full md:w-64">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <svg className="h-4 w-4 text-zinc-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="block w-full pl-10 pr-3 py-2 border border-zinc-800 rounded-full leading-5 bg-zinc-900 text-zinc-300 placeholder-zinc-500 focus:outline-none focus:bg-black focus:border-purple-500 focus:ring-1 focus:ring-purple-500 sm:text-sm transition-colors"
+                />
+              </div>
+
+              {availableGenres.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 no-scrollbar max-w-full">
+                      <button
+                          onClick={() => setSelectedGenre('All')}
+                          className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${selectedGenre === 'All' ? 'bg-white text-black border-white' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600'}`}
+                      >
+                          All
+                      </button>
+                      {availableGenres.map(genre => (
+                          <button
+                              key={genre}
+                              onClick={() => setSelectedGenre(genre)}
+                              className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${selectedGenre === genre ? 'bg-purple-600 text-white border-purple-500' : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600'}`}
+                          >
+                              {genre}
+                          </button>
+                      ))}
+                  </div>
+              )}
+            </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6">
-          {sortedItems.length > 0 ? (
-            sortedItems.map((item, index) => (
-              <MediaCard 
-                key={item.id} 
-                item={item} 
-                rank={index + 1} 
-                onDelete={handleDeleteItem}
-                onClick={setSelectedItem}
-              />
-            ))
-          ) : (
-            <div className="text-center py-20 text-zinc-500">
-              <p>No items found in this category.</p>
-              <button 
-                onClick={() => setIsModalOpen(true)}
-                className="mt-4 text-purple-400 hover:text-purple-300 underline"
-              >
-                Add the first {activeTab}
-              </button>
+        {/* LOADING & EMPTY STATES */}
+        {isAppLoading && (
+           <div className="text-center py-20 text-purple-400 animate-pulse">
+              <p>Connecting to Community Database...</p>
+           </div>
+        )}
+
+        {!isAppLoading && items.length > 0 && displayedItems.length === 0 && (
+            <div className="text-center py-20 text-zinc-500 border border-dashed border-zinc-800 rounded-2xl">
+                <p>No matches found.</p>
+                <button onClick={() => { setSearchQuery(''); setSelectedGenre('All'); }} className="mt-2 text-purple-400 hover:text-purple-300 underline text-sm">Clear Filters</button>
             </div>
-          )}
+        )}
+
+        {!isAppLoading && items.length === 0 && (
+          <div className="text-center py-16 border border-dashed border-zinc-800 rounded-2xl">
+            <p className="text-zinc-500 mb-4">No {activeTab}s found in the database yet.</p>
+            <button onClick={() => setIsModalOpen(true)} className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-full font-medium transition-colors">Add the First {activeTab}</button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-6">
+          {displayedItems.map((item, index) => (
+            <MediaCard 
+              key={item.id} 
+              item={item} 
+              rank={index + 1} 
+              onDelete={handleDeleteItem}
+              onClick={setSelectedItem}
+              // Optional: Only show delete icon if admin (you need to update MediaCard to support this prop, or handle logic inside MediaCard)
+              isAdmin={user?.email === ADMIN_EMAIL} 
+            />
+          ))}
         </div>
       </main>
 
-      {/* Footer / Status Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-black/60 backdrop-blur border-t border-white/5 py-2 px-4 text-center z-50">
          <p className="text-[10px] text-zinc-600 uppercase tracking-widest">
-            Powered by Google Gemini 2.5 • Ratings Updated via AI
+            Powered by Google Gemini 2.5 • Ratings Updated via AI • Live on Firebase
          </p>
       </div>
 
-      <AddModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        onSubmit={handleAddItem}
-        isLoading={isLoading}
-      />
-      
-      <DetailsModal
-        item={selectedItem}
-        onClose={() => setSelectedItem(null)}
-      />
+      <AddModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAddItem} isLoading={isAdding} />
+      <DetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
     </div>
   );
 }
