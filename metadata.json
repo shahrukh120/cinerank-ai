@@ -1,0 +1,5 @@
+{
+  "name": "CineRank AI",
+  "description": "A dynamic, AI-powered ranking list for Movies, Series, and Anime using Gemini to fetch details.",
+  "requestFramePermissions": []
+}
