@@ -6,9 +6,16 @@ const OMDB_API_KEY = import.meta.env.VITE_OMDB_API_KEY;
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500';
 
-// ------------------------------------------------------------------
-// 1. Helper: Get Ratings from OMDb (The "Gold Standard" for ratings)
-// ------------------------------------------------------------------
+// --- 1. SAFE DATE HELPER (Crucial for iPhone/Safari) ---
+const getSafeYear = (dateString?: string): number => {
+  if (!dateString) return new Date().getFullYear();
+  const date = new Date(dateString);
+  // If date is invalid (NaN), return current year to prevent crash
+  if (isNaN(date.getTime())) return new Date().getFullYear();
+  return date.getFullYear();
+};
+
+// --- 2. Helper: Get Ratings from OMDb ---
 async function fetchRatings(imdbId: string): Promise<{ imdb: number, rt: string }> {
   if (!OMDB_API_KEY || !imdbId) return { imdb: 0, rt: 'N/A' };
 
@@ -27,11 +34,7 @@ async function fetchRatings(imdbId: string): Promise<{ imdb: number, rt: string 
   return { imdb: 0, rt: 'N/A' };
 }
 
-// ------------------------------------------------------------------
-// 2. Main Service: Fetch everything from TMDB
-// ------------------------------------------------------------------
-// ... imports remain the same
-
+// --- 3. Main Service: Fetch everything from TMDB ---
 export const fetchMediaDetails = async (input: NewItemInput) => {
   if (!TMDB_API_KEY) throw new Error("TMDB API Key is missing!");
 
@@ -48,23 +51,24 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
     const bestMatch = searchData.results?.[0];
     if (!bestMatch) throw new Error("No results found.");
 
-    // B. GET DETAILS (Now requesting 'videos' too)
+    // B. GET DETAILS (Requesting 'videos' for trailer)
     const mediaType = input.type === ItemType.Movie ? 'movie' : 'tv';
-    // ADDED: ,videos to append_to_response
     const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${bestMatch.id}?api_key=${TMDB_API_KEY}&append_to_response=external_ids,watch/providers,videos`;
     
     const detailsRes = await fetch(detailsUrl);
     const details = await detailsRes.json();
 
-    // --- NEW: EXTRACT TRAILER ---
+    // --- C. EXTRACT TRAILER ---
     const videos = details.videos?.results || [];
     const trailer = videos.find((v: any) => v.type === "Trailer" && v.site === "YouTube") 
                  || videos.find((v: any) => v.type === "Teaser" && v.site === "YouTube");
     const trailerUrl = trailer ? `https://www.youtube.com/embed/${trailer.key}` : "";
-    // ----------------------------
 
-    // C. EXTRACT DATA (Rest remains similar)
-    const year = new Date(details.release_date || details.first_air_date || Date.now()).getFullYear();
+    // --- D. EXTRACT DATA & FIX DATES ---
+    // Use getSafeYear instead of raw new Date() to prevent iPhone crash
+    const dateStr = details.release_date || details.first_air_date;
+    const year = getSafeYear(dateStr);
+
     const imdbId = details.external_ids?.imdb_id;
     const ratings = await fetchRatings(imdbId);
 
@@ -80,7 +84,7 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
     if (input.type !== ItemType.Movie && details.status !== "Ended" && details.status !== "Canceled") {
       runPeriod = `${year}-Present`;
     } else if (input.type !== ItemType.Movie && details.last_air_date) {
-      const endYear = new Date(details.last_air_date).getFullYear();
+      const endYear = getSafeYear(details.last_air_date);
       if (endYear !== year) runPeriod = `${year}-${endYear}`;
     }
 
@@ -94,7 +98,8 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
       type: input.type,
       totalSeasons: details.number_of_seasons || null,
       description: details.overview || "No description available.",
-      posterUrl: details.poster_path ? `${TMDB_IMAGE_BASE}${details.poster_path}` : undefined,
+      // Ensure strings, never undefined
+      posterUrl: details.poster_path ? `${TMDB_IMAGE_BASE}${details.poster_path}` : "",
       runPeriod: runPeriod,
       streamingOptions: streamingOptions,
       trailerUrl: trailerUrl // <--- Return the new trailer URL
@@ -106,8 +111,7 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
   }
 };
 
-
-// Helper to keep your "Smart Links" logic
+// --- 4. Helper: Smart Links ---
 function getSmartLink(platform: string, title: string): string {
   const p = platform.toLowerCase();
   const t = encodeURIComponent(title);
