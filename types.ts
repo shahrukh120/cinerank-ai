@@ -1,4 +1,3 @@
-
 export enum ItemType {
   Movie = 'Movie',
   Series = 'Series',
@@ -21,6 +20,12 @@ export interface BaseItem {
   posterUrl?: string;
   runPeriod?: string; // e.g., "2020-2024" or "2023"
   streamingOptions?: StreamingOption[];
+  
+  // --- NEW FIELDS FOR CONTRIBUTORS & SORTING ---
+  createdAt?: number;     // Timestamp for sorting
+  addedBy?: string;       // User's Display Name
+  addedByEmail?: string;  // User's Email (unique ID for leaderboard)
+  addedByPhoto?: string;  // User's Profile Picture URL
 }
 
 export interface SeriesItem extends BaseItem {
