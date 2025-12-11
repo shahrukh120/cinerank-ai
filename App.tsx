@@ -3,15 +3,15 @@ import { MediaItem, ItemType, NewItemInput } from './types';
 import { MediaCard } from './components/MediaCard';
 import { AddModal } from './components/AddModal';
 import { DetailsModal } from './components/DetailsModal';
-import { fetchMediaDetails } from './services/geminiService';
+import { fetchMediaDetails } from './services/geminiService'; // Ensure this points to mediaService now
 
 // --- FIREBASE IMPORTS ---
-import { db, auth, googleProvider } from './firebaseConfig'; // Added auth
+import { db, auth, googleProvider } from './firebaseConfig';
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query } from 'firebase/firestore';
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth'; // Auth functions
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 // --- SECURITY CONFIG ---
-const ADMIN_EMAIL = "srkplayer47@gmail.com"; // <--- CHANGE THIS TO YOUR GMAIL !!
+const ADMIN_EMAIL = "srkplayer47@gmail.com"; 
 
 function App() {
   const [items, setItems] = useState<MediaItem[]>([]); 
@@ -27,6 +27,9 @@ function App() {
   const [activeTab, setActiveTab] = useState<ItemType>(ItemType.Series);
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // --- NEW: SUCCESS STATE ---
+  const [showSuccess, setShowSuccess] = useState(false);
 
   // --- 1. LISTEN TO AUTH CHANGES ---
   useEffect(() => {
@@ -82,12 +85,16 @@ function App() {
 
   const handleAddItem = async (input: NewItemInput) => {
     const normalizedInput = input.name.trim().toLowerCase();
+    
+    // Check local duplicate first to save API calls
     const duplicate = items.find(item => item.name.toLowerCase() === normalizedInput && item.type === input.type);
     if (duplicate) { alert(`"${duplicate.name}" is already listed!`); return; }
 
     setIsAdding(true);
     try {
       const details = await fetchMediaDetails(input);
+      
+      // Check official name duplicate
       const officialDuplicate = items.find(item => item.name.toLowerCase() === details.name.toLowerCase() && item.type === input.type);
       if (officialDuplicate) { alert(`"${details.name}" is already listed!`); setIsAdding(false); return; }
       
@@ -105,8 +112,17 @@ function App() {
         totalSeasons: details.totalSeasons || null,
         createdAt: Date.now()
       };
+
       await addDoc(collection(db, "media-items"), newItem);
+      
       setIsModalOpen(false);
+
+      // --- TRIGGER SUCCESS TOAST ---
+      setShowSuccess(true);
+      setTimeout(() => {
+        setShowSuccess(false);
+      }, 3000); // Hide after 3 seconds
+
     } catch (error) {
       console.error("Failed to add item", error);
       alert("Failed to add item.");
@@ -116,7 +132,6 @@ function App() {
   };
 
   const handleDeleteItem = async (id: string) => {
-    // SECURITY CHECK: Only allow if email matches ADMIN_EMAIL
     if (!user || user.email !== ADMIN_EMAIL) {
       alert("Only the admin can delete items.");
       return;
@@ -134,7 +149,6 @@ function App() {
 
   return (
     <div className="min-h-screen pb-20">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-20">
@@ -147,7 +161,6 @@ function App() {
               </h1>
             </div>
 
-            {/* HEADER CONTROLS: Add New + Login */}
             <div className="flex items-center gap-4">
                <button
                   onClick={() => setIsModalOpen(true)}
@@ -159,7 +172,6 @@ function App() {
                   <span className="hidden md:inline">Add New</span>
                 </button>
 
-                {/* LOGIN / LOGOUT BUTTON */}
                 {user ? (
                   <div className="flex items-center gap-3">
                     <img 
@@ -200,8 +212,6 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        {/* Intro Section */}
         <div className="mb-12 p-6 md:p-8 rounded-2xl bg-gradient-to-br from-zinc-900/50 to-black border border-white/5 relative overflow-hidden backdrop-blur-sm">
           <div className="absolute top-0 right-0 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
           <div className="relative z-10">
@@ -223,7 +233,6 @@ function App() {
                 <span className="text-zinc-500 text-sm font-mono mt-1 block">Sorted by IMDb Rating</span>
             </div>
 
-            {/* SEARCH & FILTERS */}
             <div className="flex flex-col gap-3 items-end">
               <div className="relative w-full md:w-64">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -262,7 +271,6 @@ function App() {
             </div>
         </div>
 
-        {/* LOADING & EMPTY STATES */}
         {isAppLoading && (
            <div className="text-center py-20 text-purple-400 animate-pulse">
               <p>Connecting to Community Database...</p>
@@ -291,12 +299,23 @@ function App() {
               rank={index + 1} 
               onDelete={handleDeleteItem}
               onClick={setSelectedItem}
-              // Optional: Only show delete icon if admin (you need to update MediaCard to support this prop, or handle logic inside MediaCard)
               isAdmin={user?.email === ADMIN_EMAIL} 
             />
           ))}
         </div>
       </main>
+
+      {/* --- SUCCESS TOAST NOTIFICATION --- */}
+      <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-500 ${showSuccess ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
+        <div className="bg-green-500 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center gap-3 border border-green-400">
+          <div className="bg-white text-green-600 rounded-full p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          </div>
+          <span className="font-bold tracking-wide">Added Successfully!</span>
+        </div>
+      </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-black/60 backdrop-blur border-t border-white/5 py-2 px-4 text-center z-50">
          <p className="text-[10px] text-zinc-600 uppercase tracking-widest">
