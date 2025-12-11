@@ -30,11 +30,13 @@ async function fetchRatings(imdbId: string): Promise<{ imdb: number, rt: string 
 // ------------------------------------------------------------------
 // 2. Main Service: Fetch everything from TMDB
 // ------------------------------------------------------------------
+// ... imports remain the same
+
 export const fetchMediaDetails = async (input: NewItemInput) => {
   if (!TMDB_API_KEY) throw new Error("TMDB API Key is missing!");
 
   try {
-    // A. SEARCH for the content
+    // A. SEARCH
     let searchEndpoint = 'search/multi';
     if (input.type === ItemType.Movie) searchEndpoint = 'search/movie';
     if (input.type === ItemType.Series || input.type === ItemType.Anime) searchEndpoint = 'search/tv';
@@ -46,36 +48,34 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
     const bestMatch = searchData.results?.[0];
     if (!bestMatch) throw new Error("No results found.");
 
-    // B. GET DETAILS (We need a second call to get specific IDs and Providers)
-    // We use "append_to_response" to get everything in one go:
-    // - external_ids: contains the IMDb ID
-    // - watch/providers: contains streaming links
+    // B. GET DETAILS (Now requesting 'videos' too)
     const mediaType = input.type === ItemType.Movie ? 'movie' : 'tv';
-    const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${bestMatch.id}?api_key=${TMDB_API_KEY}&append_to_response=external_ids,watch/providers`;
+    // ADDED: ,videos to append_to_response
+    const detailsUrl = `${TMDB_BASE_URL}/${mediaType}/${bestMatch.id}?api_key=${TMDB_API_KEY}&append_to_response=external_ids,watch/providers,videos`;
     
     const detailsRes = await fetch(detailsUrl);
     const details = await detailsRes.json();
 
-    // C. EXTRACT DATA
+    // --- NEW: EXTRACT TRAILER ---
+    const videos = details.videos?.results || [];
+    const trailer = videos.find((v: any) => v.type === "Trailer" && v.site === "YouTube") 
+                 || videos.find((v: any) => v.type === "Teaser" && v.site === "YouTube");
+    const trailerUrl = trailer ? `https://www.youtube.com/embed/${trailer.key}` : "";
+    // ----------------------------
+
+    // C. EXTRACT DATA (Rest remains similar)
     const year = new Date(details.release_date || details.first_air_date || Date.now()).getFullYear();
     const imdbId = details.external_ids?.imdb_id;
-    
-    // Get Ratings using the IMDb ID we just found
     const ratings = await fetchRatings(imdbId);
 
-    // Format Streaming Providers (JustWatch data from TMDB)
-    // We look for 'US' or 'IN' (India) providers. Defaulting to IN since you mentioned local content.
     const providers = details['watch/providers']?.results?.['IN'] || details['watch/providers']?.results?.['US'];
     const flatProviders = providers?.flatrate || [];
     
     const streamingOptions = flatProviders.slice(0, 3).map((p: any) => ({
       platform: p.provider_name,
-      // TMDB gives a generic "tmdb.org" link to the watch page, 
-      // so we construct a smart search link like we did before.
-      url: getSmartLink(p.provider_name, details.name || details.title) 
+      url: getSmartLink(p.provider_name, details.title || details.name) 
     }));
 
-    // Construct Run Period
     let runPeriod = String(year);
     if (input.type !== ItemType.Movie && details.status !== "Ended" && details.status !== "Canceled") {
       runPeriod = `${year}-Present`;
@@ -84,10 +84,9 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
       if (endYear !== year) runPeriod = `${year}-${endYear}`;
     }
 
-    // Return the final object
     return {
       id: String(bestMatch.id),
-      name: details.title || details.name, // Use official title
+      name: details.title || details.name,
       genre: details.genres?.[0]?.name || "Unknown",
       imdbRating: ratings.imdb,
       rottenTomatoes: ratings.rt,
@@ -97,7 +96,8 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
       description: details.overview || "No description available.",
       posterUrl: details.poster_path ? `${TMDB_IMAGE_BASE}${details.poster_path}` : undefined,
       runPeriod: runPeriod,
-      streamingOptions: streamingOptions
+      streamingOptions: streamingOptions,
+      trailerUrl: trailerUrl // <--- Return the new trailer URL
     };
 
   } catch (error) {
@@ -105,6 +105,7 @@ export const fetchMediaDetails = async (input: NewItemInput) => {
     throw error;
   }
 };
+
 
 // Helper to keep your "Smart Links" logic
 function getSmartLink(platform: string, title: string): string {

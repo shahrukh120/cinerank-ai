@@ -49,3 +49,11 @@ export interface NewItemInput {
   name: string;
   type: ItemType;
 }
+
+export interface BaseItem {
+  // ... existing fields ...
+  addedByPhoto?: string;
+  
+  // --- NEW FIELD ---
+  trailerUrl?: string; 
+}

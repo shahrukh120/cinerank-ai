@@ -66,7 +66,8 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, onDelete, onCl
 
       {/* Image Section */}
       {/* CHANGE 2: w-28 sets a fixed width for mobile so it looks like a thumbnail */}
-      <div className="w-28 md:w-32 h-full flex-shrink-0 relative overflow-hidden bg-zinc-950">
+{/* Image Section */}
+      <div className="w-28 md:w-32 h-full flex-shrink-0 relative overflow-hidden bg-zinc-950 group/image">
         <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors z-10" />
         <img 
           src={imgSrc} 
@@ -76,6 +77,27 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, rank, onDelete, onCl
           className="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-500"
           loading="lazy"
         />
+
+        {/* --- NEW: PLAY BUTTON OVERLAY --- */}
+        {item.trailerUrl && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-all duration-300 bg-black/40 backdrop-blur-[2px]">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation(); // Don't open details, just play video
+                // We need to pass a special event or handle this in App.tsx
+                // For now, let's just use a standard onClick prop update
+                // (See Step 5 below for how we wire this up)
+                onClick({ ...item, isPlayRequest: true } as any); 
+              }}
+              className="w-10 h-10 bg-red-600 hover:bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform"
+              title="Watch Trailer"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5">
+                <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Content Section */}

@@ -3,6 +3,7 @@ import { MediaItem, ItemType, NewItemInput } from './types';
 import { MediaCard } from './components/MediaCard';
 import { AddModal } from './components/AddModal';
 import { DetailsModal } from './components/DetailsModal';
+import { TrailerModal } from './components/TrailerModal'; // <--- Import Trailer Modal
 import { fetchMediaDetails } from './services/geminiService'; 
 
 // --- FIREBASE IMPORTS ---
@@ -20,6 +21,9 @@ function App() {
   const [items, setItems] = useState<MediaItem[]>([]); 
   const [isAppLoading, setIsAppLoading] = useState(true);
   
+  // --- NEW: TRAILER STATE ---
+  const [playingTrailer, setPlayingTrailer] = useState<string | null>(null);
+
   // Auth State
   const [user, setUser] = useState<User | null>(null);
 
@@ -28,7 +32,7 @@ function App() {
   const [selectedItem, setSelectedItem] = useState<MediaItem | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   
-  // Active Tab can be ItemType OR 'CONTRIBUTORS'
+  // Active Tab
   const [activeTab, setActiveTab] = useState<string>(ItemType.Series);
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -77,10 +81,8 @@ function App() {
   // --- HANDLE ADD NEW CLICK ---
   const onAddClick = () => {
     if (!user) {
-        // If not logged in, force login
         handleLogin();
     } else {
-        // If logged in, show modal
         setIsModalOpen(true);
     }
   };
@@ -90,7 +92,6 @@ function App() {
   // 1. Leaderboard Logic
   const contributors = useMemo(() => {
     const counts: Record<string, { name: string; photo: string; count: number }> = {};
-    
     items.forEach(item => {
         if (item.addedByEmail) {
             if (!counts[item.addedByEmail]) {
@@ -103,7 +104,6 @@ function App() {
             counts[item.addedByEmail].count += 1;
         }
     });
-
     return Object.values(counts).sort((a, b) => b.count - a.count);
   }, [items]);
 
@@ -127,15 +127,14 @@ function App() {
   }, [items, activeTab, selectedGenre, searchQuery]);
 
   const handleAddItem = async (input: NewItemInput) => {
-    // Double check user is logged in
     if (!user) {
         alert("You must be logged in to add items!");
         return;
     }
 
     const normalizedInput = input.name.trim().toLowerCase();
-    
     const duplicate = items.find(item => item.name.toLowerCase() === normalizedInput && item.type === input.type);
+    
     if (duplicate) { 
         setIsModalOpen(false); 
         setShowDuplicate(true); 
@@ -168,6 +167,10 @@ function App() {
         runPeriod: details.runPeriod,
         streamingOptions: details.streamingOptions,
         totalSeasons: details.totalSeasons || null,
+        
+        // --- SAVE TRAILER URL ---
+        trailerUrl: details.trailerUrl || "", 
+
         createdAt: Date.now(),
         // --- SAVE CONTRIBUTOR INFO ---
         addedBy: user.displayName || "Anonymous",
@@ -222,18 +225,15 @@ function App() {
             </div>
 
             <div className="flex items-center gap-4">
-               {/* ADD NEW BUTTON - Triggers Login if needed */}
                <button
                   onClick={onAddClick}
                   className="bg-white text-black hover:bg-zinc-200 font-semibold py-2 px-4 md:px-6 rounded-full transition-colors flex items-center gap-2 text-sm shadow-[0_0_15px_rgba(255,255,255,0.2)]"
                 >
                   {user ? (
-                      // Plus Icon when logged in
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                         <path fillRule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clipRule="evenodd" />
                       </svg>
                   ) : (
-                      // Lock Icon when logged out
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                         <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3c0-2.9-2.35-5.25-5.25-5.25zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
                       </svg>
@@ -254,14 +254,12 @@ function App() {
                     </button>
                   </div>
                 ) : (
-                  // If not logged in, show nothing or just the button above handles it
                   <div/>
                 )}
             </div>
           </div>
 
           <div className="flex space-x-8 mt-2 overflow-x-auto no-scrollbar">
-            {/* Standard Tabs */}
             {Object.values(ItemType).map((type) => (
               <button
                 key={type}
@@ -274,7 +272,6 @@ function App() {
               </button>
             ))}
             
-            {/* NEW CONTRIBUTORS TAB */}
             <button
                 onClick={() => setActiveTab(TAB_CONTRIBUTORS)}
                 className={`pb-4 text-sm font-medium tracking-wide transition-all border-b-2 whitespace-nowrap px-2 flex items-center gap-2 ${
@@ -412,7 +409,14 @@ function App() {
                     item={item} 
                     rank={index + 1} 
                     onDelete={handleDeleteItem}
-                    onClick={setSelectedItem}
+                    onClick={(clickedItem) => {
+                        // --- CHECK IF IT IS A PLAY REQUEST OR A CARD CLICK ---
+                        if ((clickedItem as any).isPlayRequest) {
+                           setPlayingTrailer(clickedItem.trailerUrl || null);
+                        } else {
+                           setSelectedItem(clickedItem);
+                        }
+                    }}
                     isAdmin={user?.email === ADMIN_EMAIL} 
                     />
                 ))}
@@ -421,7 +425,7 @@ function App() {
         )}
       </main>
 
-      {/* --- TOASTS --- */}
+      {/* --- NOTIFICATIONS --- */}
       <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-500 ${showSuccess ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
         <div className="bg-green-500 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center gap-3 border border-green-400">
           <span className="font-bold tracking-wide">Added Successfully!</span>
@@ -446,8 +450,16 @@ function App() {
          </p>
       </div>
 
+      {/* --- MODALS --- */}
       <AddModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAddItem} isLoading={isAdding} />
       <DetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      
+      {/* NEW: Trailer Modal */}
+      <TrailerModal 
+        isOpen={!!playingTrailer} 
+        videoUrl={playingTrailer} 
+        onClose={() => setPlayingTrailer(null)} 
+      />
     </div>
   );
 }
