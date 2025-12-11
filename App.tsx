@@ -3,7 +3,7 @@ import { MediaItem, ItemType, NewItemInput } from './types';
 import { MediaCard } from './components/MediaCard';
 import { AddModal } from './components/AddModal';
 import { DetailsModal } from './components/DetailsModal';
-import { fetchMediaDetails } from './services/geminiService'; // Ensure this points to mediaService now
+import { fetchMediaDetails } from './services/geminiService'; 
 
 // --- FIREBASE IMPORTS ---
 import { db, auth, googleProvider } from './firebaseConfig';
@@ -28,8 +28,10 @@ function App() {
   const [selectedGenre, setSelectedGenre] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // --- NEW: SUCCESS STATE ---
+  // --- NOTIFICATION STATES ---
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [showDuplicate, setShowDuplicate] = useState(false); // <--- NEW DUPLICATE STATE
 
   // --- 1. LISTEN TO AUTH CHANGES ---
   useEffect(() => {
@@ -86,17 +88,30 @@ function App() {
   const handleAddItem = async (input: NewItemInput) => {
     const normalizedInput = input.name.trim().toLowerCase();
     
-    // Check local duplicate first to save API calls
+    // 1. Check local duplicate (Fast check)
     const duplicate = items.find(item => item.name.toLowerCase() === normalizedInput && item.type === input.type);
-    if (duplicate) { alert(`"${duplicate.name}" is already listed!`); return; }
+    
+    if (duplicate) { 
+        setIsModalOpen(false); // Close modal
+        setShowDuplicate(true); // <--- TRIGGER WARNING
+        setTimeout(() => setShowDuplicate(false), 3000);
+        return; 
+    }
 
     setIsAdding(true);
     try {
       const details = await fetchMediaDetails(input);
       
-      // Check official name duplicate
+      // 2. Check official name duplicate (Accurate check)
       const officialDuplicate = items.find(item => item.name.toLowerCase() === details.name.toLowerCase() && item.type === input.type);
-      if (officialDuplicate) { alert(`"${details.name}" is already listed!`); setIsAdding(false); return; }
+      
+      if (officialDuplicate) { 
+          setIsModalOpen(false);
+          setIsAdding(false); 
+          setShowDuplicate(true); // <--- TRIGGER WARNING
+          setTimeout(() => setShowDuplicate(false), 3000);
+          return; 
+      }
       
       const newItem = {
         name: details.name,
@@ -116,16 +131,14 @@ function App() {
       await addDoc(collection(db, "media-items"), newItem);
       
       setIsModalOpen(false);
-
-      // --- TRIGGER SUCCESS TOAST ---
       setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-      }, 3000); // Hide after 3 seconds
+      setTimeout(() => setShowSuccess(false), 3000);
 
     } catch (error) {
       console.error("Failed to add item", error);
-      alert("Failed to add item.");
+      setIsModalOpen(false);
+      setShowError(true);
+      setTimeout(() => setShowError(false), 3000);
     } finally {
       setIsAdding(false);
     }
@@ -142,7 +155,8 @@ function App() {
         await deleteDoc(doc(db, "media-items", id));
         if (selectedItem?.id === id) setSelectedItem(null);
       } catch (error) {
-        alert("Failed to delete item.");
+        setShowError(true);
+        setTimeout(() => setShowError(false), 3000);
       }
     }
   };
@@ -305,7 +319,7 @@ function App() {
         </div>
       </main>
 
-      {/* --- SUCCESS TOAST NOTIFICATION --- */}
+      {/* --- SUCCESS TOAST (GREEN) --- */}
       <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-500 ${showSuccess ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
         <div className="bg-green-500 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center gap-3 border border-green-400">
           <div className="bg-white text-green-600 rounded-full p-1">
@@ -314,6 +328,30 @@ function App() {
             </svg>
           </div>
           <span className="font-bold tracking-wide">Added Successfully!</span>
+        </div>
+      </div>
+
+      {/* --- ERROR TOAST (RED) --- */}
+      <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-500 ${showError ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
+        <div className="bg-red-500 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(239,68,68,0.4)] flex items-center gap-3 border border-red-400">
+          <div className="bg-white text-red-600 rounded-full p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <span className="font-bold tracking-wide">Failed to Add Item</span>
+        </div>
+      </div>
+
+      {/* --- DUPLICATE TOAST (ORANGE) --- */}
+      <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-500 ${showDuplicate ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
+        <div className="bg-amber-500 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.4)] flex items-center gap-3 border border-amber-400">
+          <div className="bg-white text-amber-600 rounded-full p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+            </svg>
+          </div>
+          <span className="font-bold tracking-wide">Title Already Exists!</span>
         </div>
       </div>
 
