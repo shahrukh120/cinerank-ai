@@ -9,6 +9,16 @@ export interface StreamingOption {
   url: string;
 }
 
+// --- 1. NEW: Comment Structure ---
+export interface Comment {
+  id: string;         // Unique ID for the comment
+  text: string;
+  userId: string;     // user.email
+  userName: string;   // user.displayName
+  userPhoto?: string; 
+  timestamp: number;
+}
+
 export interface BaseItem {
   id: string;
   name: string;
@@ -18,14 +28,19 @@ export interface BaseItem {
   type: ItemType;
   description?: string;
   posterUrl?: string;
-  runPeriod?: string; // e.g., "2020-2024" or "2023"
+  runPeriod?: string; 
   streamingOptions?: StreamingOption[];
-  
-  // --- NEW FIELDS FOR CONTRIBUTORS & SORTING ---
-  createdAt?: number;     // Timestamp for sorting
-  addedBy?: string;       // User's Display Name
-  addedByEmail?: string;  // User's Email (unique ID for leaderboard)
-  addedByPhoto?: string;  // User's Profile Picture URL
+  trailerUrl?: string; 
+
+  createdAt?: number;     
+  addedBy?: string;       
+  addedByEmail?: string;  
+  addedByPhoto?: string;  
+
+  // --- 2. NEW: Interaction Fields ---
+  likedBy?: string[];     // Array of emails who liked
+  dislikedBy?: string[];  // Array of emails who disliked
+  comments?: Comment[];   // Array of comment objects
 }
 
 export interface SeriesItem extends BaseItem {
@@ -48,12 +63,4 @@ export type MediaItem = SeriesItem | MovieItem | AnimeItem;
 export interface NewItemInput {
   name: string;
   type: ItemType;
-}
-
-export interface BaseItem {
-  // ... existing fields ...
-  addedByPhoto?: string;
-  
-  // --- NEW FIELD ---
-  trailerUrl?: string; 
 }
