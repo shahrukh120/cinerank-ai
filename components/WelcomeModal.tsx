@@ -19,7 +19,7 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({ isOpen, onClose }) =
           <div className="w-16 h-16 mx-auto bg-gradient-to-tr from-purple-600 to-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-purple-500/20">
              <span className="text-3xl">👋</span>
           </div>
-          <h2 className="text-2xl font-bold text-white mb-2">Welcome to CineRank.ai</h2>
+          <h2 className="text-2xl font-bold text-white mb-2">Welcome to CineRank Entertainments</h2>
           <p className="text-zinc-400 text-sm">The community-driven library for hidden gems.</p>
         </div>
 
