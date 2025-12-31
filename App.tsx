@@ -351,7 +351,7 @@ function App() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-black/60 backdrop-blur border-t border-white/5 py-2 px-4 text-center z-50">
-         <p className="text-[10px] text-zinc-600 uppercase tracking-widest">Powered by Google Gemini 2.5 • Ratings Updated via AI • Live on Firebase</p>
+         <p className="text-[10px] text-zinc-600 uppercase tracking-widest">Powered by Google sources • Ratings Updated via API'S(TMDB ,OMDB) • Live on Firebase</p>
       </div>
 
       <AddModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAddItem} isLoading={isAdding} />
