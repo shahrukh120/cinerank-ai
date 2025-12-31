@@ -4,7 +4,8 @@ import { MediaCard } from './components/MediaCard';
 import { AddModal } from './components/AddModal';
 import { DetailsModal } from './components/DetailsModal';
 import { TrailerModal } from './components/TrailerModal'; 
-import { CommentsModal } from './components/CommentsModal'; // <--- Import
+import { CommentsModal } from './components/CommentsModal'; 
+import { WelcomeModal } from './components/WelcomeModal'; // <--- NEW IMPORT
 import { fetchMediaDetails } from './services/geminiService'; 
 
 // --- FIREBASE IMPORTS ---
@@ -20,8 +21,10 @@ function App() {
   const [isAppLoading, setIsAppLoading] = useState(true);
   const [playingTrailer, setPlayingTrailer] = useState<string | null>(null);
   
-  // --- NEW: COMMENT MODAL STATE ---
   const [activeCommentItem, setActiveCommentItem] = useState<MediaItem | null>(null);
+  
+  // --- NEW: WELCOME MODAL STATE ---
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const [user, setUser] = useState<User | null>(null);
 
@@ -38,6 +41,23 @@ function App() {
   const [showError, setShowError] = useState(false);
   const [showDuplicate, setShowDuplicate] = useState(false);
 
+  // --- 1. CHECK WELCOME STATUS ON MOUNT ---
+  useEffect(() => {
+    const hasSeenWelcome = localStorage.getItem('cinerank_welcome_seen_v1');
+    if (!hasSeenWelcome) {
+        // Small delay so it doesn't pop up instantly while site is loading
+        const timer = setTimeout(() => {
+            setShowWelcome(true);
+        }, 1500); 
+        return () => clearTimeout(timer);
+    }
+  }, []);
+
+  const handleCloseWelcome = () => {
+      localStorage.setItem('cinerank_welcome_seen_v1', 'true');
+      setShowWelcome(false);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -51,7 +71,6 @@ function App() {
       const dbItems = snapshot.docs.map(doc => ({ 
         ...doc.data(), 
         id: doc.id,
-        // Ensure arrays exist so .length doesn't crash
         likedBy: doc.data().likedBy || [],
         dislikedBy: doc.data().dislikedBy || [],
         comments: doc.data().comments || []
@@ -80,15 +99,12 @@ function App() {
 
   const handleLike = async (item: MediaItem) => {
     if (!user || !user.email) { alert("Please login to vote!"); handleLogin(); return; }
-    
     const itemRef = doc(db, "media-items", item.id);
     const userEmail = user.email;
 
     if (item.likedBy?.includes(userEmail)) {
-      // Toggle OFF if already liked
       await updateDoc(itemRef, { likedBy: arrayRemove(userEmail) });
     } else {
-      // Toggle ON and remove Dislike if present
       await updateDoc(itemRef, {
         likedBy: arrayUnion(userEmail),
         dislikedBy: arrayRemove(userEmail) 
@@ -98,7 +114,6 @@ function App() {
 
   const handleDislike = async (item: MediaItem) => {
     if (!user || !user.email) { alert("Please login to vote!"); handleLogin(); return; }
-
     const itemRef = doc(db, "media-items", item.id);
     const userEmail = user.email;
 
@@ -330,7 +345,7 @@ function App() {
                         }}
                         onLike={handleLike}
                         onDislike={handleDislike}
-                        onComment={handleCommentClick} // <--- UPDATED
+                        onComment={handleCommentClick} 
                         isAdmin={user?.email === ADMIN_EMAIL}
                         currentUserEmail={user?.email || undefined} 
                     />
@@ -351,21 +366,16 @@ function App() {
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 bg-black/60 backdrop-blur border-t border-white/5 py-2 px-4 text-center z-50">
-         <p className="text-[10px] text-zinc-600 uppercase tracking-widest">Powered by Google sources • Ratings Updated via API'S(TMDB ,OMDB) • Live on Firebase</p>
+         <p className="text-[10px] text-zinc-600 uppercase tracking-widest">Powered by Google Gemini 2.5 • Ratings Updated via AI • Live on Firebase</p>
       </div>
 
       <AddModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAddItem} isLoading={isAdding} />
       <DetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
       <TrailerModal isOpen={!!playingTrailer} videoUrl={playingTrailer} onClose={() => setPlayingTrailer(null)} />
+      <CommentsModal isOpen={!!activeCommentItem} item={activeCommentItem} onClose={() => setActiveCommentItem(null)} onAddComment={addCommentToDb} currentUserEmail={user?.email || undefined} />
       
-      {/* NEW: Comments Modal */}
-      <CommentsModal 
-        isOpen={!!activeCommentItem} 
-        item={activeCommentItem} 
-        onClose={() => setActiveCommentItem(null)} 
-        onAddComment={addCommentToDb}
-        currentUserEmail={user?.email || undefined}
-      />
+      {/* NEW: Welcome Modal (Only shows if localStorage key is missing) */}
+      <WelcomeModal isOpen={showWelcome} onClose={handleCloseWelcome} />
     </div>
   );
 }
