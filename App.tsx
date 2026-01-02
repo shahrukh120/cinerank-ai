@@ -7,20 +7,20 @@ import { TrailerModal } from './components/TrailerModal';
 import { CommentsModal } from './components/CommentsModal'; 
 import { WelcomeModal } from './components/WelcomeModal'; 
 import { fetchMediaDetails } from './services/geminiService'; 
-// --- 1. NEW IMPORTS ---
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { About, Privacy, Terms, Contact } from './components/StaticPages';
+// --- 1. IMPORT THE NEW MATH HELPER ---
+import { calculateCineRank } from './cineRank';
 
 // --- FIREBASE IMPORTS ---
 import { db, auth, googleProvider } from './firebaseConfig';
-import { collection, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, query } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, query, setDoc } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 const ADMIN_EMAIL = "srkplayer47@gmail.com"; 
 const TAB_CONTRIBUTORS = 'CONTRIBUTORS';
 
 function App() {
-  // --- 2. ROUTER LOCATION HOOK ---
   const location = useLocation();
   const isHomePage = location.pathname === '/';
 
@@ -44,10 +44,9 @@ function App() {
   const [showError, setShowError] = useState(false);
   const [showDuplicate, setShowDuplicate] = useState(false);
 
-  // --- CHECK WELCOME STATUS ---
   useEffect(() => {
     const hasSeenWelcome = localStorage.getItem('cinerank_welcome_seen_v1');
-    if (!hasSeenWelcome && isHomePage) { // Only show on home
+    if (!hasSeenWelcome && isHomePage) { 
         const timer = setTimeout(() => setShowWelcome(true), 1500); 
         return () => clearTimeout(timer);
     }
@@ -71,7 +70,9 @@ function App() {
         id: doc.id,
         likedBy: doc.data().likedBy || [],
         dislikedBy: doc.data().dislikedBy || [],
-        comments: doc.data().comments || []
+        comments: doc.data().comments || [],
+        // Ensure ratings map exists
+        starRatings: doc.data().starRatings || {} 
       })) as MediaItem[];
       setItems(dbItems);
       setIsAppLoading(false);
@@ -85,7 +86,7 @@ function App() {
   const handleLogout = async () => { await signOut(auth); };
   const onAddClick = () => { if (!user) { handleLogin(); } else { setIsModalOpen(true); } };
 
-  // --- INTERACTION LOGIC (Shortened for brevity, logic remains same) ---
+  // --- INTERACTION LOGIC ---
   const handleLike = async (item: MediaItem) => {
     if (!user || !user.email) { alert("Please login to vote!"); handleLogin(); return; }
     const itemRef = doc(db, "media-items", item.id);
@@ -98,6 +99,25 @@ function App() {
     const itemRef = doc(db, "media-items", item.id);
     if (item.dislikedBy?.includes(user.email)) { await updateDoc(itemRef, { dislikedBy: arrayRemove(user.email) }); } 
     else { await updateDoc(itemRef, { dislikedBy: arrayUnion(user.email), likedBy: arrayRemove(user.email) }); }
+  };
+
+  // --- 2. NEW: HANDLE STAR RATING ---
+  const handleRate = async (item: MediaItem, rating: number) => {
+    if (!user || !user.email) { alert("Please login to rate!"); handleLogin(); return; }
+    
+    // We use dot notation to update a specific key in the map
+    // e.g. "starRatings.srk@gmail.com": 5
+    const fieldPath = `starRatings.${user.email.replace(/\./g, '_')}`; // Firebase doesn't like dots in keys, simple sanitization
+    // Actually, best practice for Maps in Firestore:
+    // We will just read the current map, update it locally, and send the whole object back 
+    // OR use the dot notation if we trust the email structure. 
+    // Let's stick to a safe full-object update for stability:
+    
+    const currentRatings = item.starRatings || {};
+    const updatedRatings = { ...currentRatings, [user.email]: rating };
+    
+    const itemRef = doc(db, "media-items", item.id);
+    await updateDoc(itemRef, { starRatings: updatedRatings });
   };
 
   const handleCommentClick = (item: MediaItem) => {
@@ -136,7 +156,7 @@ function App() {
         addedBy: user.displayName || "Anonymous",
         addedByEmail: user.email || "",
         addedByPhoto: user.photoURL || "",
-        likedBy: [], dislikedBy: [], comments: []
+        likedBy: [], dislikedBy: [], comments: [], starRatings: {}
       };
       await addDoc(collection(db, "media-items"), newItem);
       setIsModalOpen(false); setShowSuccess(true); setTimeout(() => setShowSuccess(false), 3000);
@@ -151,7 +171,6 @@ function App() {
     }
   };
 
-  // --- MEMOS ---
   const contributors = useMemo(() => {
     const counts: Record<string, { name: string; photo: string; count: number }> = {};
     items.forEach(item => {
@@ -177,11 +196,12 @@ function App() {
       .filter(item => item.type === activeTab)
       .filter(item => selectedGenre === 'All' || item.genre === selectedGenre)
       .filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      .sort((a, b) => b.imdbRating - a.imdbRating);
+      // --- 3. UPDATED SORTING: Use calculateCineRank ---
+      .sort((a, b) => {
+        return calculateCineRank(b) - calculateCineRank(a);
+      });
   }, [items, activeTab, selectedGenre, searchQuery]);
 
-
-  // --- RENDER ---
   return (
     <div className="min-h-screen pb-20 flex flex-col">
       <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/5">
@@ -211,7 +231,6 @@ function App() {
             </div>
           </div>
           
-          {/* 3. ONLY SHOW TABS ON HOME PAGE */}
           {isHomePage && (
             <div className="flex space-x-8 mt-2 overflow-x-auto no-scrollbar">
               {Object.values(ItemType).map((type) => (
@@ -227,14 +246,12 @@ function App() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full">
-        {/* 4. DEFINE ROUTES */}
         <Routes>
             <Route path="/about" element={<About />} />
             <Route path="/privacy-policy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/contact" element={<Contact />} />
             
-            {/* 5. HOME PAGE LOGIC (Wrapped in Route) */}
             <Route path="/" element={
                 <>
                     {activeTab === TAB_CONTRIBUTORS ? (
@@ -264,7 +281,7 @@ function App() {
                             <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
                                 <div>
                                     <h2 className="text-3xl font-bold text-white">Top Rated {activeTab}s</h2>
-                                    <span className="text-zinc-500 text-sm font-mono mt-1 block">Sorted by IMDb Rating</span>
+                                    <span className="text-zinc-500 text-sm font-mono mt-1 block">Sorted by CineRank Score</span>
                                 </div>
                                 <div className="flex flex-col gap-3 items-end">
                                 <div className="relative w-full md:w-64">
@@ -301,7 +318,8 @@ function App() {
                                     }}
                                     onLike={handleLike}
                                     onDislike={handleDislike}
-                                    onComment={handleCommentClick} 
+                                    onComment={handleCommentClick}
+                                    onRate={handleRate} // <--- PASSING THE NEW FUNCTION HERE
                                     isAdmin={user?.email === ADMIN_EMAIL}
                                     currentUserEmail={user?.email || undefined} 
                                 />
@@ -314,38 +332,19 @@ function App() {
         </Routes>
       </main>
 
-{/* GLOBAL FOOTER */}
-<div className="bg-black/80 backdrop-blur border-t border-white/5 py-6 px-4">
-  <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-zinc-500">
-    
-    {/* Footer Links */}
-    <div className="flex gap-4">
-      <Link to="/about" className="hover:text-white transition-colors">
-        About
-      </Link>
-      <Link to="/privacy-policy" className="hover:text-white transition-colors">
-        Privacy Policy
-      </Link>
-      <Link to="/terms" className="hover:text-white transition-colors">
-        Terms
-      </Link>
-      <Link to="/contact" className="hover:text-white transition-colors">
-        Contact
-      </Link>
-    </div>
-
-    {/* Legal Attribution */}
-    <p className="text-center md:text-right leading-relaxed">
-      © {new Date().getFullYear()} CineRank Entertainments ·
-      This product uses the TMDB API but is not endorsed or certified by TMDB.
-      <br className="hidden md:block" />
-      Additional metadata provided by the OMDb API.
-    </p>
-
-  </div>
-</div>
-
-
+      <div className="bg-black/80 backdrop-blur border-t border-white/5 py-6 px-4">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-zinc-500">
+            <div className="flex gap-4">
+            <Link to="/about" className="hover:text-white transition-colors">About</Link>
+            <Link to="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>
+            <Link to="/terms" className="hover:text-white transition-colors">Terms</Link>
+            <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
+            </div>
+            <p className="text-center md:text-right leading-relaxed">
+            © {new Date().getFullYear()} CineRank Entertainments · This product uses the TMDB API but is not endorsed or certified by TMDB.
+            </p>
+        </div>
+      </div>
 
       <div className={`fixed bottom-24 left-1/2 transform -translate-x-1/2 z-[60] transition-all duration-500 ${showSuccess ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10 pointer-events-none'}`}>
         <div className="bg-green-500 text-white px-6 py-3 rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] flex items-center gap-3 border border-green-400"><span className="font-bold tracking-wide">Added Successfully!</span></div>

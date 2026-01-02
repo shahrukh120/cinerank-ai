@@ -9,21 +9,24 @@ export interface StreamingOption {
   url: string;
 }
 
-// --- 1. NEW: Comment Structure ---
 export interface Comment {
-  id: string;         // Unique ID for the comment
+  id: string;
   text: string;
-  userId: string;     // user.email
-  userName: string;   // user.displayName
+  userId: string;
+  userName: string;
   userPhoto?: string; 
   timestamp: number;
 }
+
+// --- NEW: Ratings Map Interface ---
+// Key = User Email (e.g. "srk@gmail.com")
+// Value = Rating (1-5)
+export type RatingsMap = Record<string, number>; 
 
 export interface BaseItem {
   id: string;
   name: string;
   genre: string;
-  imdbRating: number;
   year: number;
   type: ItemType;
   description?: string;
@@ -37,20 +40,24 @@ export interface BaseItem {
   addedByEmail?: string;  
   addedByPhoto?: string;  
 
-  // --- 2. NEW: Interaction Fields ---
-  likedBy?: string[];     // Array of emails who liked
-  dislikedBy?: string[];  // Array of emails who disliked
-  comments?: Comment[];   // Array of comment objects
+  // --- INTERACTION FIELDS ---
+  likedBy?: string[];     
+  dislikedBy?: string[];  
+  comments?: Comment[];   
+  
+  // --- NEW: STAR RATINGS ---
+  starRatings?: RatingsMap; 
+  
+  // Optional: We can still keep this for caching if needed
+  score?: number; 
 }
 
 export interface SeriesItem extends BaseItem {
   type: ItemType.Series;
-  rottenTomatoes: string;
 }
 
 export interface MovieItem extends BaseItem {
   type: ItemType.Movie;
-  rottenTomatoes: string;
 }
 
 export interface AnimeItem extends BaseItem {
