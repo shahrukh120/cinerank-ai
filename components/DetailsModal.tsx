@@ -1,6 +1,6 @@
-
 import React from 'react';
 import { MediaItem, ItemType } from '../types';
+import { calculateCineRank } from '../cineRank'; 
 
 interface DetailsModalProps {
   item: MediaItem | null;
@@ -10,22 +10,33 @@ interface DetailsModalProps {
 export const DetailsModal: React.FC<DetailsModalProps> = ({ item, onClose }) => {
   if (!item) return null;
 
-  // Generate a fallback image if posterUrl is missing
   const generatedUrl = `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/500/750`;
   const imgSrc = item.posterUrl || generatedUrl;
 
+  // --- 1. CALCULATE SCORES ---
+  const cineRankScore = calculateCineRank(item);
+  
+  const ratings = Object.values(item.starRatings || {});
+  
+  // FIX: Explicitly typed 'a' and 'b' as numbers to satisfy TypeScript
+const avgRating =
+  ratings.length > 0
+    ? (
+        (ratings as number[]).reduce((a, b) => a + b, 0) / ratings.length
+      ).toFixed(1)
+    : 'N/A';
+
+  const totalVotes = (item.likedBy?.length || 0) + (item.dislikedBy?.length || 0) + ratings.length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <div 
         className="absolute inset-0 bg-black/90 backdrop-blur-md transition-opacity"
         onClick={onClose}
       />
 
-      {/* Modal Content */}
       <div className="relative bg-zinc-900 border border-zinc-800 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] md:max-h-[600px] animate-fade-in-up">
         
-        {/* Close Button */}
         <button 
           onClick={onClose}
           className="absolute top-3 right-3 z-20 p-2 bg-black/50 text-white/70 hover:text-white rounded-full backdrop-blur-sm transition-colors"
@@ -35,7 +46,6 @@ export const DetailsModal: React.FC<DetailsModalProps> = ({ item, onClose }) => 
           </svg>
         </button>
 
-        {/* Image Side */}
         <div className="w-full md:w-2/5 h-64 md:h-auto relative bg-black">
           <img 
             src={imgSrc} 
@@ -49,7 +59,6 @@ export const DetailsModal: React.FC<DetailsModalProps> = ({ item, onClose }) => 
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-transparent to-transparent md:bg-gradient-to-r" />
         </div>
 
-        {/* Info Side */}
         <div className="w-full md:w-3/5 p-6 md:p-8 flex flex-col overflow-y-auto">
           <div className="mb-6">
             <h2 className="text-3xl font-bold text-white mb-2">{item.name}</h2>
@@ -68,20 +77,20 @@ export const DetailsModal: React.FC<DetailsModalProps> = ({ item, onClose }) => 
 
           <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-zinc-950/50 rounded-xl border border-white/5">
             <div>
-              <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">IMDb Rating</div>
-              <div className="text-2xl font-bold text-yellow-400 flex items-center gap-1">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                  <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006z" clipRule="evenodd" />
-                </svg>
-                {item.imdbRating}
+              <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-bold">CineRank Score</div>
+              <div className="text-2xl font-black text-green-400 flex items-center gap-1">
+                {totalVotes === 0 ? 'NR' : cineRankScore}
+                <span className="text-sm font-normal text-zinc-600">%</span>
               </div>
             </div>
+
             <div>
-              <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1">
-                {item.type === ItemType.Anime ? 'Total Seasons' : 'Rotten Tomatoes'}
+              <div className="text-xs text-zinc-500 uppercase tracking-wider mb-1 font-bold">
+                Community Rating
               </div>
-              <div className={`text-2xl font-bold ${item.type === ItemType.Anime ? 'text-blue-400' : 'text-red-400'}`}>
-                {item.type === ItemType.Anime ? item.totalSeasons : item.rottenTomatoes}
+              <div className="text-2xl font-bold text-yellow-400 flex items-center gap-2">
+                 <span>{avgRating}</span>
+                 <span className="text-sm font-normal text-zinc-600">/ 5</span>
               </div>
             </div>
           </div>
