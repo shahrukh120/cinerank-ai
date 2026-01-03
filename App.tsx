@@ -267,7 +267,7 @@ function App() {
                 <span className="text-white font-bold text-lg">C</span>
               </div>
               <h1 className="text-2xl font-bold tracking-tight text-white hidden md:block">
-                CineRank<span className="text-purple-500">.ai</span>
+                Cine<span className="text-purple-500">Rank</span>
               </h1>
             </Link>
             <div className="flex items-center gap-4">
