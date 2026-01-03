@@ -1,8 +1,9 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
+<div align="center">
+<img width="1433" height="686" alt="Screenshot 2026-01-03 at 17 37 14" src="https://github.com/user-attachments/assets/b1f00511-0a29-493c-88c5-17c5357196db" />
+</div>
 # 🎬 CineRank
+
 
 ![Vercel](https://img.shields.io/badge/vercel-%23000000.svg?style=for-the-badge&logo=vercel&logoColor=white)
 ![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)
