@@ -1,4 +1,7 @@
 <!-- updated on Jan 2026 -->
+<p align="center">
+  <img src="assets/preview.png" alt="CineRank AI Preview" width="700"/>
+</p>
 
 # 🎬 CineRank.ai
 
