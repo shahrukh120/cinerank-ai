@@ -41,3 +41,30 @@ The core of this platform is the **CineRank Score**, calculated using a weighted
 
 ```math
 CineRank = (0.6 \times RatingScore + 0.4 \times LikeScore) \times ConfidenceFactor
+
+
+
+
+
+🛠️ Tech Stack
+Frontend: React (Vite), TypeScript
+
+Styling: Tailwind CSS, Lucide React (Icons)
+
+Backend / Database: Firebase Firestore (NoSQL)
+
+Authentication: Firebase Auth (Google Provider)
+
+API: TMDB (The Movie Database)
+
+Hosting: Vercel
+
+Analytics: Vercel Web Analytics
+
+🚀 Getting Started
+Prerequisites
+Node.js (v18+)
+
+A Firebase Project
+
+A TMDB API Key
