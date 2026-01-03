@@ -67,7 +67,7 @@ export const Privacy = () => (
     </p>
 
     <p className="mb-4">
-      <strong>5. Advertising:</strong> CineRank may display advertisements in the
+      <strong>5. Advertising:</strong> CineRank may also display advertisements in the
       future. Advertising partners may use cookies or similar technologies in
       accordance with their own privacy policies.
     </p>
