@@ -76,6 +76,9 @@ export const Privacy = () => (
       <strong>6. User Rights:</strong> You may request deletion of your account and
       associated data at any time by contacting us.
     </p>
+    <p className="mb-4">
+     CineRank focuses on discovery and community discussion and does not aim to replace any official rating platforms.
+     </p>
   </div>
 );
 
