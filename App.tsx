@@ -9,12 +9,12 @@ import { WelcomeModal } from './components/WelcomeModal';
 import { fetchMediaDetails } from './services/geminiService'; 
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { About, Privacy, Terms, Contact } from './components/StaticPages';
-// --- 1. IMPORT THE NEW MATH HELPER ---
 import { calculateCineRank } from './cineRank';
 
 // --- FIREBASE IMPORTS ---
+// Added 'getDoc' to imports
 import { db, auth, googleProvider } from './firebaseConfig';
-import { collection, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, query, setDoc } from 'firebase/firestore';
+import { collection, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, query, setDoc, getDoc } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
 const ADMIN_EMAIL = "srkplayer47@gmail.com"; 
@@ -71,7 +71,6 @@ function App() {
         likedBy: doc.data().likedBy || [],
         dislikedBy: doc.data().dislikedBy || [],
         comments: doc.data().comments || [],
-        // Ensure ratings map exists
         starRatings: doc.data().starRatings || {} 
       })) as MediaItem[];
       setItems(dbItems);
@@ -101,17 +100,8 @@ function App() {
     else { await updateDoc(itemRef, { dislikedBy: arrayUnion(user.email), likedBy: arrayRemove(user.email) }); }
   };
 
-  // --- 2. NEW: HANDLE STAR RATING ---
   const handleRate = async (item: MediaItem, rating: number) => {
     if (!user || !user.email) { alert("Please login to rate!"); handleLogin(); return; }
-    
-    // We use dot notation to update a specific key in the map
-    // e.g. "starRatings.srk@gmail.com": 5
-    const fieldPath = `starRatings.${user.email.replace(/\./g, '_')}`; // Firebase doesn't like dots in keys, simple sanitization
-    // Actually, best practice for Maps in Firestore:
-    // We will just read the current map, update it locally, and send the whole object back 
-    // OR use the dot notation if we trust the email structure. 
-    // Let's stick to a safe full-object update for stability:
     
     const currentRatings = item.starRatings || {};
     const updatedRatings = { ...currentRatings, [user.email]: rating };
@@ -136,6 +126,30 @@ function App() {
       timestamp: Date.now()
     };
     await updateDoc(doc(db, "media-items", itemId), { comments: arrayUnion(newComment) });
+  };
+
+  // --- NEW: DELETE COMMENT LOGIC (Admin Only) ---
+  const handleDeleteComment = async (itemId: string, commentToDelete: Comment) => {
+     if (!user || user.email !== ADMIN_EMAIL) {
+         alert("Unauthorized");
+         return;
+     }
+
+     const itemRef = doc(db, "media-items", itemId);
+     
+     // We can try arrayRemove first. If the object matches exactly in memory, it works fast.
+     try {
+         await updateDoc(itemRef, { comments: arrayRemove(commentToDelete) });
+     } catch (err) {
+         // Fallback: Read, Filter, Write (if arrayRemove fails due to object mismatch)
+         console.log("Standard remove failed, trying filter method...", err);
+         const snapshot = await getDoc(itemRef);
+         if (snapshot.exists()) {
+             const currentComments = snapshot.data().comments || [];
+             const updatedComments = currentComments.filter((c: Comment) => c.id !== commentToDelete.id);
+             await updateDoc(itemRef, { comments: updatedComments });
+         }
+     }
   };
 
   const handleAddItem = async (input: NewItemInput) => {
@@ -196,7 +210,6 @@ function App() {
       .filter(item => item.type === activeTab)
       .filter(item => selectedGenre === 'All' || item.genre === selectedGenre)
       .filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      // --- 3. UPDATED SORTING: Use calculateCineRank ---
       .sort((a, b) => {
         return calculateCineRank(b) - calculateCineRank(a);
       });
@@ -319,7 +332,7 @@ function App() {
                                     onLike={handleLike}
                                     onDislike={handleDislike}
                                     onComment={handleCommentClick}
-                                    onRate={handleRate} // <--- PASSING THE NEW FUNCTION HERE
+                                    onRate={handleRate}
                                     isAdmin={user?.email === ADMIN_EMAIL}
                                     currentUserEmail={user?.email || undefined} 
                                 />
@@ -359,7 +372,16 @@ function App() {
       <AddModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAddItem} isLoading={isAdding} />
       <DetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
       <TrailerModal isOpen={!!playingTrailer} videoUrl={playingTrailer} onClose={() => setPlayingTrailer(null)} />
-      <CommentsModal isOpen={!!activeCommentItem} item={activeCommentItem} onClose={() => setActiveCommentItem(null)} onAddComment={addCommentToDb} currentUserEmail={user?.email || undefined} />
+      <CommentsModal 
+         isOpen={!!activeCommentItem} 
+         item={activeCommentItem} 
+         onClose={() => setActiveCommentItem(null)} 
+         onAddComment={addCommentToDb} 
+         // --- PASS NEW PROPS HERE ---
+         onDeleteComment={handleDeleteComment}
+         currentUserEmail={user?.email || undefined} 
+         isAdmin={user?.email === ADMIN_EMAIL}
+      />
       <WelcomeModal isOpen={showWelcome} onClose={handleCloseWelcome} />
     </div>
   );
