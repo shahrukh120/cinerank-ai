@@ -12,7 +12,6 @@ import { About, Privacy, Terms, Contact } from './components/StaticPages';
 import { calculateCineRank } from './cineRank';
 
 // --- FIREBASE IMPORTS ---
-// Added 'getDoc' to imports
 import { db, auth, googleProvider } from './firebaseConfig';
 import { collection, addDoc, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove, onSnapshot, query, setDoc, getDoc } from 'firebase/firestore';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -128,7 +127,7 @@ function App() {
     await updateDoc(doc(db, "media-items", itemId), { comments: arrayUnion(newComment) });
   };
 
-  // --- NEW: DELETE COMMENT LOGIC (Admin Only) ---
+  // --- ADMIN: DELETE COMMENT ---
   const handleDeleteComment = async (itemId: string, commentToDelete: Comment) => {
      if (!user || user.email !== ADMIN_EMAIL) {
          alert("Unauthorized");
@@ -136,12 +135,9 @@ function App() {
      }
 
      const itemRef = doc(db, "media-items", itemId);
-     
-     // We can try arrayRemove first. If the object matches exactly in memory, it works fast.
      try {
          await updateDoc(itemRef, { comments: arrayRemove(commentToDelete) });
      } catch (err) {
-         // Fallback: Read, Filter, Write (if arrayRemove fails due to object mismatch)
          console.log("Standard remove failed, trying filter method...", err);
          const snapshot = await getDoc(itemRef);
          if (snapshot.exists()) {
@@ -150,6 +146,45 @@ function App() {
              await updateDoc(itemRef, { comments: updatedComments });
          }
      }
+  };
+
+  // --- NEW: ADMIN DELETE CONTRIBUTOR ---
+  const handleDeleteContributor = async (targetEmail: string) => {
+    if (!user || user.email !== ADMIN_EMAIL) {
+        alert("Only admin can remove contributors.");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to remove ${targetEmail} from the Hall of Fame? \n\nThis will NOT delete the movies they added, but it will change the 'Added By' credit to 'Anonymous'.`)) {
+        return;
+    }
+
+    try {
+        // 1. Find all items added by this user
+        const itemsToUpdate = items.filter(item => item.addedByEmail === targetEmail);
+
+        if (itemsToUpdate.length === 0) {
+            alert("This user hasn't contributed any items (or is already removed).");
+            return;
+        }
+
+        // 2. Update each item to remove credit
+        const updatePromises = itemsToUpdate.map(item => {
+            const itemRef = doc(db, "media-items", item.id);
+            return updateDoc(itemRef, {
+                addedBy: "Anonymous",
+                addedByEmail: "", // Empty string removes them from the calculation loop
+                addedByPhoto: "" 
+            });
+        });
+
+        await Promise.all(updatePromises);
+        alert(`Successfully anonymized ${itemsToUpdate.length} contributions.`);
+
+    } catch (error) {
+        console.error("Error removing contributor:", error);
+        alert("Failed to remove contributor. Check console.");
+    }
   };
 
   const handleAddItem = async (input: NewItemInput) => {
@@ -186,10 +221,17 @@ function App() {
   };
 
   const contributors = useMemo(() => {
-    const counts: Record<string, { name: string; photo: string; count: number }> = {};
+    const counts: Record<string, { name: string; photo: string; count: number; email: string }> = {};
     items.forEach(item => {
         if (item.addedByEmail) {
-            if (!counts[item.addedByEmail]) { counts[item.addedByEmail] = { name: item.addedBy || 'User', photo: item.addedByPhoto || '', count: 0 }; }
+            if (!counts[item.addedByEmail]) { 
+                counts[item.addedByEmail] = { 
+                    name: item.addedBy || 'User', 
+                    photo: item.addedByPhoto || '', 
+                    count: 0,
+                    email: item.addedByEmail 
+                }; 
+            }
             counts[item.addedByEmail].count += 1;
         }
     });
@@ -275,7 +317,21 @@ function App() {
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {contributors.map((contributor, index) => (
-                                    <div key={index} className="bg-zinc-900/50 border border-white/5 p-6 rounded-2xl flex items-center gap-4 hover:bg-zinc-800/50 transition-colors">
+                                    <div key={index} className="relative bg-zinc-900/50 border border-white/5 p-6 rounded-2xl flex items-center gap-4 hover:bg-zinc-800/50 transition-colors group">
+                                        
+                                        {/* ADMIN DELETE CONTRIBUTOR BUTTON */}
+                                        {user?.email === ADMIN_EMAIL && (
+                                            <button 
+                                                onClick={() => handleDeleteContributor(contributor.email)}
+                                                className="absolute top-2 right-2 p-1.5 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                                                title="Admin: Remove from Hall of Fame"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                                    <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-1.72 6.97a.75.75 0 1 0-1.06 1.06L10.94 12l-1.72 1.72a.75.75 0 1 0 1.06 1.06L12 13.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L13.06 12l1.72-1.72a.75.75 0 1 0-1.06-1.06L12 10.94l-1.72-1.72Z" clipRule="evenodd" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                        
                                         <div className="relative">
                                             <img src={contributor.photo || `https://ui-avatars.com/api/?name=${contributor.name}&background=random`} alt={contributor.name} className="w-16 h-16 rounded-full border-2 border-zinc-700 object-cover" onError={(e) => { e.currentTarget.src = `https://ui-avatars.com/api/?name=${contributor.name}&background=random`; }} />
                                             {index < 3 && <div className={`absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold border-2 border-zinc-900 ${index === 0 ? 'bg-yellow-400 text-black' : index === 1 ? 'bg-zinc-300 text-black' : 'bg-orange-400 text-black'}`}>{index + 1}</div>}
@@ -377,7 +433,6 @@ function App() {
          item={activeCommentItem} 
          onClose={() => setActiveCommentItem(null)} 
          onAddComment={addCommentToDb} 
-         // --- PASS NEW PROPS HERE ---
          onDeleteComment={handleDeleteComment}
          currentUserEmail={user?.email || undefined} 
          isAdmin={user?.email === ADMIN_EMAIL}
